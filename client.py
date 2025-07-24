@@ -1,7 +1,6 @@
 import aiohttp
 import os
 import sys
-import threading
 import asyncio
 import json
 import websockets
@@ -43,26 +42,26 @@ def generate_keys():
     
     return private_pem, public_pem
 
-def save_keys(private_pem, public_pem, username):
+def save_keys(private_pem, public_pem, did):
     """Сохранение ключей в файлы"""
     ensure_keys_dir()
-    with open(f"{KEYS_DIR}/{username}_private.pem", "wb") as f:
+    with open(f"{KEYS_DIR}/{did}_private.pem", "wb") as f:
         f.write(private_pem)
-    with open(f"{KEYS_DIR}/{username}_public.pem", "wb") as f:
+    with open(f"{KEYS_DIR}/{did}_public.pem", "wb") as f:
         f.write(public_pem)
 
-def load_private_key(username):
+def load_private_key(did):
     """Загрузка приватного ключа пользователя"""
     try:
-        with open(f"{KEYS_DIR}/{username}_private.pem", "rb") as f:
+        with open(f"{KEYS_DIR}/{did}_private.pem", "rb") as f:
             return f.read()
     except FileNotFoundError:
         return None
 
-def load_public_key(username):
+def load_public_key(did):
     """Загрузка публичного ключа пользователя"""
     try:
-        with open(f"{KEYS_DIR}/{username}_public.pem", "rb") as f:
+        with open(f"{KEYS_DIR}/{did}_public.pem", "rb") as f:
             return f.read()
     except FileNotFoundError:
         return None
@@ -139,9 +138,9 @@ def decrypt_message(private_key_pem, encrypted_key_hex, iv_hex, ciphertext_hex):
     
     return plaintext.decode()
 
-async def exchange_keys(username: str):
+async def exchange_keys(did: str):
     """Асинхронный обмен публичными ключами"""
-    public_key = load_public_key(username)
+    public_key = load_public_key(did)
     if not public_key:
         print("🔑 Публичный ключ не найден. Сгенерируйте ключи сначала.")
         return None
@@ -150,7 +149,7 @@ async def exchange_keys(username: str):
         try:
             async with session.post(
                 f"{BASE_URL}/exchange_keys",
-                json={"username": username, "public_key": public_key.decode()}
+                json={"did": did, "public_key": public_key.decode()}
             ) as response:
                 if response.status == 200:
                     print("✅ Публичный ключ успешно отправлен на сервер!")
@@ -162,11 +161,11 @@ async def exchange_keys(username: str):
             print(f"🚫 Ошибка соединения: {e}")
             return False
 
-async def get_remote_public_key(username: str):
+async def get_remote_public_key(did: str):
     """Асинхронное получение публичного ключа"""
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.get(f"{BASE_URL}/public_key/{username}") as response:
+            async with session.get(f"{BASE_URL}/public_key/{did}") as response:
                 if response.status == 200:
                     data = await response.json()
                     return data["public_key"].encode()
@@ -190,8 +189,8 @@ async def send_private_message(sender: str, recipient: str, message: str):
             async with session.post(
                 f"{BASE_URL}/send_private",
                 json={
-                    "sender": sender,
-                    "recipient": recipient,
+                    "sender_did": sender,
+                    "recipient_did": recipient,
                     "encrypted_key": encrypted["encrypted_key"],
                     "iv": encrypted["iv"],
                     "ciphertext": encrypted["ciphertext"]
@@ -207,13 +206,13 @@ async def send_private_message(sender: str, recipient: str, message: str):
             print(f"🚫 Ошибка соединения: {e}")
             return None
 
-async def get_private_messages(username: str, limit: int = 100):
+async def get_private_messages(did: str, limit: int = 100):
     """Асинхронное получение сообщений"""
     params = {"limit": limit}
     async with aiohttp.ClientSession() as session:
         try:
             async with session.get(
-                f"{BASE_URL}/private_messages/{username}",
+                f"{BASE_URL}/private_messages/{did}",
                 params=params
             ) as response:
                 if response.status == 200:
@@ -225,7 +224,7 @@ async def get_private_messages(username: str, limit: int = 100):
             print(f"🚫 Ошибка соединения: {e}")
             return None
 
-def print_private_messages(messages, username):
+def print_private_messages(messages, did):
     """Вывод сообщений с улучшенным форматированием"""
     if not messages:
         print("\n📭 Нет приватных сообщений")
@@ -236,7 +235,7 @@ def print_private_messages(messages, username):
     print("="*50)
     
     for msg in messages:
-        private_key = load_private_key(username)
+        private_key = load_private_key(did)
         if not private_key:
             print("🔐 Приватный ключ не найден")
             continue
@@ -248,9 +247,9 @@ def print_private_messages(messages, username):
                 msg["iv"],
                 msg["ciphertext"]
             )
-            direction = "→" if msg["sender"] == username else "←"
+            direction = "→" if msg["sender_did"] == did else "←"
             color = "\033[94m" if direction == "→" else "\033[92m"
-            other_user = msg["recipient"] if direction == "→" else msg["sender"]
+            other_user = msg["recipient_did"] if direction == "→" else msg["sender_did"]
             
             print(f"\n{color}[{msg['timestamp']}] {direction} {other_user}\033[0m")
             print(f"   {decrypted}")
@@ -258,9 +257,9 @@ def print_private_messages(messages, username):
         except Exception as e:
             print(f"🔓 Ошибка дешифрования: {e}")
 
-async def websocket_listener(username: str):
+async def websocket_listener(did: str):
     """Асинхронный WebSocket listener"""
-    uri = f"ws://localhost:8000/ws/{username}"
+    uri = f"ws://localhost:8000/ws/{did}"
     while True:
         try:
             async with websockets.connect(uri) as websocket:
@@ -271,14 +270,14 @@ async def websocket_listener(username: str):
             print(f"🔌 WebSocket error: {e}, reconnecting in 5 seconds...")
             await asyncio.sleep(5)
 
-async def handle_realtime_messages(username):
+async def handle_realtime_messages(did):
     """Обработка сообщений в реальном времени"""
     while True:
         if not realtime_queue.empty():
             msg = await realtime_queue.get()
-            if msg.get("type") == "private_message" and msg["recipient"] == username:
+            if msg.get("type") == "private_message" and msg["recipient_did"] == did:
                 try:
-                    private_key = load_private_key(username)
+                    private_key = load_private_key(did)
                     decrypted = decrypt_message(
                         private_key,
                         msg["encrypted_key"],
@@ -286,7 +285,7 @@ async def handle_realtime_messages(username):
                         msg["ciphertext"]
                     )
                     print("\n" + "="*50)
-                    print(f"\033[93m✉️ НОВОЕ СООБЩЕНИЕ ОТ {msg['sender']}!\033[0m")
+                    print(f"\033[93m✉️ НОВОЕ СООБЩЕНИЕ ОТ {msg['sender_did']}!\033[0m")
                     print(f"   {decrypted}")
                     print("="*50)
                     print("\n>>> Введите команду: ", end="", flush=True)
@@ -308,30 +307,30 @@ def print_menu():
 
 async def main():
     ensure_keys_dir()
-    username = None
+    did = None
     
     print("\033[94m" + "="*50)
     print("🔐 СИСТЕМА ЗАЩИЩЕННЫХ СООБЩЕНИЙ С E2E ШИФРОВАНИЕМ".center(50))
     print("="*50 + "\033[0m")
     
-    while not username:
-        username = input("👤 Введите ваше имя пользователя: ")
-        if not username:
-            print("🚫 Имя пользователя не может быть пустым!")
+    while not did:
+        did = input("👤 Введите ваш DID (идентификатор): ")
+        if not did:
+            print("🚫 Идентификатор не может быть пустым!")
     
     # Генерация/загрузка ключей
-    private_key = load_private_key(username)
-    public_key = load_public_key(username)
+    private_key = load_private_key(did)
+    public_key = load_public_key(did)
     
     if not private_key or not public_key:
         print("🔑 Генерация новых ключей...")
         private_pem, public_pem = generate_keys()
-        save_keys(private_pem, public_pem, username)
+        save_keys(private_pem, public_pem, did)
         print(f"✅ Ключи сохранены в {KEYS_DIR}/")
     
     # Запуск фоновых задач
-    asyncio.create_task(websocket_listener(username))
-    asyncio.create_task(handle_realtime_messages(username))
+    asyncio.create_task(websocket_listener(did))
+    asyncio.create_task(handle_realtime_messages(did))
     
     # Главный цикл
     while True:
@@ -339,7 +338,7 @@ async def main():
         choice = input("\n>>> Введите команду: ")
         
         if choice == "1":
-            if await exchange_keys(username):
+            if await exchange_keys(did):
                 print("✅ Ключи успешно обновлены на сервере")
             
         elif choice == "2":
@@ -352,7 +351,7 @@ async def main():
         elif choice == "3":
             recipient = input("👤 Получатель: ")
             message = input("💬 Сообщение: ")
-            await send_private_message(username, recipient, message)
+            await send_private_message(did, recipient, message)
             
         elif choice == "4":
             limit = input("📊 Лимит сообщений (по умолчанию 100): ")
@@ -360,8 +359,8 @@ async def main():
                 limit = int(limit) if limit.strip() else 100
             except ValueError:
                 limit = 100
-            messages = await get_private_messages(username, limit)
-            print_private_messages(messages, username)
+            messages = await get_private_messages(did, limit)
+            print_private_messages(messages, did)
             
         elif choice == "5":
             print("🚪 Выход...")

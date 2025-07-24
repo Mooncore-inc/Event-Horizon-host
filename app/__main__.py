@@ -40,104 +40,84 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+@app.on_event("startup")
+async def startup_event():
+    await init_db()
+
 class KeyExchangeRequest(BaseModel):
-    username: str
+    did: str = Field(..., min_length=5, max_length=255)
     public_key: str
 
 class PrivateMessageRequest(BaseModel):
-    sender: str
-    recipient: str
+    sender_did: str = Field(..., min_length=5, max_length=255)
+    recipient_did: str = Field(..., min_length=5, max_length=255)
     encrypted_key: str
     iv: str
     ciphertext: str
 
 class PrivateMessageResponse(BaseModel):
     id: str
-    sender: str
-    recipient: str
+    sender_did: str
+    recipient_did: str
     encrypted_key: str
     iv: str
     ciphertext: str
     timestamp: datetime
 
-@app.on_event("startup")
-async def startup_event():
-    await init_db()
-
 @app.post("/exchange_keys")
 async def exchange_keys(request: KeyExchangeRequest):
-    try:
-        await save_public_key(request.username, request.public_key)
-        return {"status": "success"}
-    except Exception as e:
-        raise HTTPException(500, detail="Key exchange failed") from e
+    await save_public_key(request.did, request.public_key)
+    return {"status": "success"}
 
-@app.get("/public_key/{username}")
-async def get_user_public_key(username: str):
-    key = await get_public_key(username)
+@app.get("/public_key/{did}")
+async def get_user_public_key(did: str):
+    key = await get_public_key(did)
     if not key:
         raise HTTPException(404, detail="Public key not found")
     return {"public_key": key}
 
 @app.post("/send_private", response_model=PrivateMessageResponse)
 async def send_private_message(message: PrivateMessageRequest):
-    try:
-        new_message = await save_private_message(
-            sender=message.sender,
-            recipient=message.recipient,
-            encrypted_key=message.encrypted_key,
-            iv=message.iv,
-            ciphertext=message.ciphertext
-        )
+    new_message = await save_private_message(
+        sender_did=message.sender_did,
+        recipient_did=message.recipient_did,
+        encrypted_key=message.encrypted_key,
+        iv=message.iv,
+        ciphertext=message.ciphertext
+    )
 
-        await manager.send_personal_message(
-            {
-                "type": "private_message",
-                "sender": message.sender,
-                "recipient": message.recipient,
-                "encrypted_key": message.encrypted_key,
-                "iv": message.iv,
-                "ciphertext": message.ciphertext,
-                "timestamp": new_message["timestamp"].isoformat()
-            },
-            message.recipient
-        )
-        
-        return {
-            "id": new_message["id"],
-            "sender": message.sender,
-            "recipient": message.recipient,
+    await manager.send_personal_message(
+        {
+            "type": "private_message",
+            "sender_did": message.sender_did,
+            "recipient_did": message.recipient_did,
             "encrypted_key": message.encrypted_key,
             "iv": message.iv,
             "ciphertext": message.ciphertext,
-            "timestamp": new_message["timestamp"]
-        }
-    except Exception as e:
-        raise HTTPException(500, detail="Failed to send private message") from e
+            "timestamp": new_message["timestamp"].isoformat()
+        },
+        message.recipient_did
+    )
+    
+    return {**new_message, **message.dict()}
 
-@app.get("/private_messages/{username}", response_model=List[PrivateMessageResponse])
+@app.get("/private_messages/{did}", response_model=List[PrivateMessageResponse])
 async def get_private_messages_endpoint(
-    username: str, 
+    did: str,
     limit: Optional[int] = 100
 ):
-    try:
-        safe_limit = min(max(1, limit or 100), 1000)
-        messages = await get_private_messages(username, safe_limit)
-        return messages
-    except Exception as e:
-        raise HTTPException(500, detail="Failed to get messages") from e
+    safe_limit = min(max(1, limit or 100), 1000)
+    messages = await get_private_messages(did, safe_limit)
+    return messages
 
-@app.websocket("/ws/{username}")
-async def websocket_endpoint(websocket: WebSocket, username: str):
-    await manager.connect(username, websocket)
+@app.websocket("/ws/{did}")
+async def websocket_endpoint(websocket: WebSocket, did: str):
+    await manager.connect(did, websocket)
     try:
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
-        await manager.disconnect(username)
-    except Exception as e:
-        print(f"WebSocket error: {e}")
-        await manager.disconnect(username)
+        await manager.disconnect(did)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

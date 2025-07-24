@@ -8,30 +8,30 @@ from .database import PublicKey, PrivateMessage, async_session
 
 logger = logging.getLogger(__name__)
 
-async def save_public_key(username: str, public_key: str):
+async def save_public_key(did: str, public_key: str):
     async with async_session() as session:
         async with session.begin():
-            existing = await session.get(PublicKey, username)
+            existing = await session.get(PublicKey, did)
             if existing:
                 stmt = update(PublicKey).where(
-                    PublicKey.username == username
+                    PublicKey.did == did
                 ).values(public_key=public_key)
                 await session.execute(stmt)
             else:
                 stmt = insert(PublicKey).values(
-                    username=username,
+                    did=did,
                     public_key=public_key
                 )
                 await session.execute(stmt)
 
-async def get_public_key(username: str) -> str:
+async def get_public_key(did: str) -> str:
     async with async_session() as session:
-        result = await session.get(PublicKey, username)
+        result = await session.get(PublicKey, did)
         return result.public_key if result else None
 
 async def save_private_message(
-    sender: str,
-    recipient: str,
+    sender_did: str,
+    recipient_did: str,
     encrypted_key: str,
     iv: str,
     ciphertext: str
@@ -43,8 +43,8 @@ async def save_private_message(
             
             stmt = insert(PrivateMessage).values(
                 id=message_id,
-                sender=sender,
-                recipient=recipient,
+                sender_did=sender_did,
+                recipient_did=recipient_did,
                 encrypted_key=encrypted_key,
                 iv=iv,
                 ciphertext=ciphertext,
@@ -54,24 +54,24 @@ async def save_private_message(
             await session.execute(stmt)
             return {
                 "id": message_id,
-                "sender": sender,
-                "recipient": recipient,
+                "sender_did": sender_did,
+                "recipient_did": recipient_did,
                 "timestamp": timestamp
             }
 
-async def get_private_messages(username: str, limit: int = 100) -> list:
+async def get_private_messages(did: str, limit: int = 100) -> list:
     async with async_session() as session:
         stmt = select(
             PrivateMessage.id,
-            PrivateMessage.sender,
-            PrivateMessage.recipient,
+            PrivateMessage.sender_did,
+            PrivateMessage.recipient_did,
             PrivateMessage.encrypted_key,
             PrivateMessage.iv,
             PrivateMessage.ciphertext,
             PrivateMessage.timestamp
         ).where(
-            (PrivateMessage.sender == username) | 
-            (PrivateMessage.recipient == username)
+            (PrivateMessage.sender_did == did) |
+            (PrivateMessage.recipient_did == did)
         ).order_by(
             desc(PrivateMessage.timestamp)
         ).limit(limit)

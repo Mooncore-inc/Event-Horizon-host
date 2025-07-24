@@ -27,14 +27,14 @@ Base = declarative_base(metadata=metadata)
 
 class PublicKey(Base):
     __tablename__ = "public_keys"
-    username = Column(String(50), primary_key=True)
+    did = Column(String(255), primary_key=True)
     public_key = Column(Text, nullable=False)
 
 class PrivateMessage(Base):
     __tablename__ = "private_messages"
     id = Column(String(36), primary_key=True)
-    sender = Column(String(50), nullable=False)
-    recipient = Column(String(50), nullable=False)
+    sender_did = Column(String(255), nullable=False)
+    recipient_did = Column(String(255), nullable=False)
     encrypted_key = Column(Text, nullable=False)
     iv = Column(Text, nullable=False)
     ciphertext = Column(Text, nullable=False)
