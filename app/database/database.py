@@ -29,6 +29,8 @@ class PublicKey(Base):
     __tablename__ = "public_keys"
     did = Column(String(255), primary_key=True)
     public_key = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class PrivateMessage(Base):
     __tablename__ = "private_messages"

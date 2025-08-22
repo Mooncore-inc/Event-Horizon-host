@@ -2,7 +2,7 @@ import logging
 from uuid import uuid4
 from datetime import datetime
 
-from sqlalchemy import insert, select, desc, update
+from sqlalchemy import insert, select, desc, update, delete
 
 from .database import PublicKey, PrivateMessage, async_session
 
@@ -78,3 +78,12 @@ async def get_private_messages(did: str, limit: int = 100) -> list:
         
         result = await session.execute(stmt)
         return [dict(row) for row in result.mappings()]
+
+
+async def delete_public_key(did: str) -> bool:
+    """Delete public key for a user"""
+    async with async_session() as session:
+        async with session.begin():
+            stmt = delete(PublicKey).where(PublicKey.did == did)
+            result = await session.execute(stmt)
+            return result.rowcount > 0
