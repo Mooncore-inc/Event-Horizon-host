@@ -1,0 +1,25 @@
+# Core dependencies
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Database
+sqlalchemy==2.0.23
+aiosqlite==0.19.0
+
+# Authentication & Security
+PyJWT==2.8.0
+cryptography==41.0.7
+
+# Async support
+asyncio==3.4.3
+
+# Utilities
+python-multipart==0.0.6
+passlib[bcrypt]==1.7.4
+
+# Development
+pytest==7.4.3
+pytest-asyncio==0.21.1
+httpx==0.25.2
